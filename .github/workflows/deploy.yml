@@ -30,13 +30,24 @@ jobs:
           VITE_BREEZ_API_KEY: ${{ secrets.VITE_BREEZ_API_KEY }}
           VITE_PPQ_API_KEY: ${{ secrets.PPQ_API_KEY }}
 
-      - name: Copy files to production server
-        uses: appleboy/scp-action@v0.1.4
+      # rsync, not scp: the scp action unpacks an archive by running shell
+      # commands on the server, so the deploy key needs a full shell there.
+      # rsync needs none, which lets the server restrict this key to uploads
+      # only. --delete also makes the webroot an exact mirror of dist/, so
+      # old content-hashed bundles no longer pile up.
+      #
+      # .well-known is excluded on purpose: it can hold hand-placed files
+      # (ACME challenges, nostr.json) that are not part of any build.
+      - name: Deploy to production server
+        uses: burnett01/rsync-deployments@v9
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          port: ${{ secrets.PROD_PORT }}
-          source: "dist/*"
-          target: ${{ secrets.PROD_PATH }}
-          strip_components: 1
+          # No -p, plus --omit-dir-times: leave the webroot's own mode and
+          # times alone, so a webroot the deploy user doesn't own can't turn
+          # a complete transfer into exit 23.
+          switches: -rlt --omit-dir-times --delete --exclude='.well-known/'
+          path: dist/
+          remote_path: ${{ secrets.PROD_PATH }}
+          remote_host: ${{ secrets.PROD_HOST }}
+          remote_port: ${{ secrets.PROD_PORT }}
+          remote_user: ${{ secrets.PROD_USER }}
+          remote_key: ${{ secrets.PROD_SSH_KEY }}
